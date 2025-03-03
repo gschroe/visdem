@@ -59,7 +59,7 @@ You can either just provide the mass, then the corresponding density threshold w
 To run the program with helical symmetry using a rise of 4.75 Å and a twist of -1.2°:
 
 ```bash
-./visdem -i map.mrc -m 400 -r 2.5 -o v.mrc --rise 4.75 --twist -1.2
+./visdem -i map.mrc -m 400 -r 2.5 -o sharpened.mrc --rise 4.75 --twist -1.2
 ```
 
 If no threshold is provided, the program will compute one automatically from volume based on the provided mass.
