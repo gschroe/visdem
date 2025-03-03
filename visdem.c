@@ -930,6 +930,7 @@ int main(int argc, char *argv[]) {
 
 
     double *render_factor;
+    // render_factor could be used in the future to scale bead density
     render_factor = (double *) calloc(natoms, sizeof(double));
     for (size_t i = 0; i < natoms; i++)  render_factor[i] = 1.0; 
     double peng_kernel_width = 10.0;  // adjust as needed (in Å)
