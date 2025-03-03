@@ -52,6 +52,8 @@ This will produce an executable named `visdem`.
 - `--twist`  
   (Optional) Twist parameter for helical symmetry.
 
+You can either just provide the mass, then the corresponding density threshold will be estimated, or you just provide the threshold, then the corresponding mass (and number of atoms) will be estimated, or you provide mass and threshold, then the number of atoms derived from the mass will be placed into the volume defined by the density threshold.
+
 ### Example
 
 To run the program with helical symmetry using a rise of 4.75 Å and a twist of -1.2°:
