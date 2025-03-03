@@ -2,7 +2,7 @@
 
 **VISDEM 1.2** is a cryo‑EM density map sharpening tool developed by Gunnar F. Schröder, Michaela Spiegel, and Amudha Duraisamy. It estimates the underlying atomic distribution of a protein from the density map and computes the corresponding radially averaged structure factor and density histogram. These calculated profiles are then used to adjust the input map’s spectrum and histogram, enhancing map clarity. VISDEM 1.2 also supports the application of helical symmetry during the atomic distribution estimation.
 
-When using VISDEM please cite: \
+## Reference
 M. Spiegel, A.K. Duraisamy, and G.F. Schröder. Improving the Visualisation of Cryo-EM Density Reconstructions \
 J.Struct.Biol. (2015), 191(2):207-213
 
