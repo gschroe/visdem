@@ -414,46 +414,6 @@ int cmpfunc(const void *a, const void *b) {
     return (da < db) ? -1 : (da > db);
 }
 
-/* -------------------------
-   Bead Model Renderer
-   ------------------------- */
-
-/*
- * renderBeadModel “renders” a bead model by adding a Gaussian
- * (with standard deviation sigma) at each bead location into the provided density map.
- * The map is assumed to be zeroed prior to calling this function.
- */
-void renderBeadModel(DensityMap *map, int natoms, double *xcoo, double sigma) {
-    int radius = (int) ceil(3.0 * sigma / map->apix_x);
-    for (int i = 0; i < natoms; i++) {
-        double bx = xcoo[i*3+0];
-        double by = xcoo[i*3+1];
-        double bz = xcoo[i*3+2];
-        int ix0 = (int) ((bx - map->origin_x) / map->apix_x + 0.5);
-        int iy0 = (int) ((by - map->origin_y) / map->apix_y + 0.5);
-        int iz0 = (int) ((bz - map->origin_z) / map->apix_z + 0.5);
-        for (int iz = iz0 - radius; iz <= iz0 + radius; iz++) {
-            if (iz < 0 || iz >= map->nz) continue;
-            double zpos = map->origin_z + iz * map->apix_z;
-            double dz = bz - zpos;
-            for (int iy = iy0 - radius; iy <= iy0 + radius; iy++) {
-                if (iy < 0 || iy >= map->ny) continue;
-                double ypos = map->origin_y + iy * map->apix_y;
-                double dy = by - ypos;
-                for (int ix = ix0 - radius; ix <= ix0 + radius; ix++) {
-                    if (ix < 0 || ix >= map->nx) continue;
-                    double xpos = map->origin_x + ix * map->apix_x;
-                    double dx = bx - xpos;
-                    double r2 = dx*dx + dy*dy + dz*dz;
-                    double contrib = exp(-r2 / (2.0 * sigma * sigma));
-                    int index = iz * map->nx * map->ny + iy * map->nx + ix;
-                    map->data[index] += contrib;
-                }
-            }
-        }
-    }
-}
-
 
 /* 
  * matchStructureFactor adjusts the Fourier amplitudes of inmap so that the
@@ -573,16 +533,6 @@ void matchStructureFactor(DensityMap *inmap, DensityMap *beadMap, int nbins) {
 }
 
 
-// Comparison function to sort pointers to doubles (ascending order).
-/*
-int cmpDoublePtr(const void *a, const void *b) {
-    double da = **(double **)a;
-    double db = **(double **)b;
-    return (da < db) ? -1 : (da > db) ? 1 : 0;
-}
-*/
-
-
 // A helper struct to store a voxel’s value together with its index.
 typedef struct {
     int index;
@@ -653,9 +603,6 @@ void writePDB(const char *filename, double *xcoo, int natoms) {
 
 
 
-
-
-
 /* -------------------------
    Main Application
    ------------------------- */
@@ -664,10 +611,10 @@ int main(int argc, char *argv[]) {
 
     char *inmap_fname = NULL;
     char *outmap_fname = NULL;
-    double mass = 400.0;              // in kDa
-    double resolution = 2.5;        // resolution cutoff in Å
+    double mass = -1.0;              // in kDa
+    double resolution = 2.0;        // resolution cutoff in Å
     double threshold = -1.0;        // optional threshold
-    double rise = 4.75, twist = -0.84; // optional helical parameters
+    double rise = 4.75, twist = -0.6; // optional helical parameters
     int use_threshold = 0, use_symmetry = 0;
     
     int c;
@@ -722,9 +669,9 @@ int main(int argc, char *argv[]) {
     }
     
     // Check required parameters.
-    if (!inmap_fname || !outmap_fname || mass <= 0.0 || resolution <= 0.0) {
+    if (!inmap_fname || !outmap_fname || (mass <= 0.0 && !use_threshold)) {
         fprintf(stderr, "Missing required parameters.\n");
-        fprintf(stderr, "Usage: %s --input <file> --output <file> --mass <mass> --resolution <cutoff> [--threshold <value>] [--rise <value>] [--twist <value>]\n", argv[0]);
+        fprintf(stderr, "Usage: %s --input <file> --output <file> --mass <mass> --resolution <cutoff> [--threshold <value>] [--rise <value> --twist <value>]\n", argv[0]);
         exit(EXIT_FAILURE);
     }
 
@@ -732,14 +679,17 @@ int main(int argc, char *argv[]) {
     // Debug output.
     printf("Input map: %s\n", inmap_fname);
     printf("Output map: %s\n", outmap_fname);
-    printf("Mass (kDa): %.2lf\n", mass);
-    printf("Resolution cutoff (Å): %.2lf\n", resolution);
+    //printf("Mass (kDa): %.2lf\n", mass);
+    //printf("Resolution cutoff (Å): %.2lf\n", resolution);
+
+    /*
     if (use_threshold)
         printf("Threshold: %lf\n", threshold);
     if (use_symmetry) {
         printf("Rise: %.3lf\n", rise);
         printf("Twist: %.3lf\n", twist);
     }
+    */
     
     mass *= 1000.0; // Convert mass from kDa to Da.
 
@@ -753,7 +703,7 @@ int main(int argc, char *argv[]) {
     }
     
     // Apply a smooth low-pass filter to the input map.
-    // TODO: maybe apply filter only to output ?
+    // TODO: decide maybe apply filter also to input ?
     //smoothLowpassFilter_many(&inmap, resolution);
     
     // Compute basic statistics.
@@ -766,12 +716,22 @@ int main(int argc, char *argv[]) {
     }
     double mean_val = sum_val / inmap.n;
     fprintf(stderr, "Map: min = %lf, max = %lf, mean = %lf\n", min_val, max_val, mean_val);
+
+    double voxel_volume = inmap.apix_x * inmap.apix_y * inmap.apix_z;
+    double avg_mass = 1.0*0.499 + 12.0*0.314 + 14.0*0.087 + 16.0*0.098 + 32.0*0.002;
+    int natoms = 0;
+    int nvoxels = 0;
+    double volume = 0.0;
     
     // If no threshold is provided, determine one from the density histogram.
-    if (threshold < 0) {
+    if (!use_threshold && mass > 0) {
+        /* Case 1: Only mass is provided.
+        Compute the total protein volume from mass, then compute the number of voxels 
+        that should be above threshold, and derive threshold from the sorted density values.
+        */
         // Compute number of voxels corresponding to the protein volume.
-        double volume = mass * 1.19; // Å^3 per Da
-        int nvoxels = (int)(volume / (inmap.apix_x * inmap.apix_y * inmap.apix_z));
+        volume = mass * 1.19; // Å^3 per Da
+        nvoxels = (int)(volume / voxel_volume);
         double **values = (double **) malloc(inmap.n * sizeof(double *));
         if (!values) { fprintf(stderr, "Memory allocation error\n"); exit(1); }
         for (int i = 0; i < inmap.n; i++) {
@@ -782,15 +742,34 @@ int main(int argc, char *argv[]) {
         if (idx < 0) idx = 0;
         threshold = *(values[idx]);
         free(values);
+        natoms = (int)(mass / avg_mass);
+    } else if (mass <=0 &&  use_threshold) {
+        /* Case 2: Only threshold is provided.
+        Count the number of voxels above threshold, compute the volume above threshold,
+        and then estimate natoms from an assumed average atomic volume (e.g., 15 Å³/atom).
+        */
+        for (int i = 0; i < inmap.n; i++) {
+           if (inmap.data[i] >= threshold)
+               nvoxels++;
+        }
+        volume = nvoxels * voxel_volume;
+        mass = volume / 1.19;
+        natoms = (int)(mass / avg_mass);
+
+    } else if (mass > 0 && use_threshold) {
+        /* Case 3: Both mass and threshold are provided.
+        Use the provided threshold and compute natoms from mass.
+        */
+        natoms = (int)(mass / avg_mass);
     }
-    fprintf(stderr, "Using density threshold = %lf\n", threshold);
+
+    //double volume_above_threshold = nvoxels * voxel_volume;
+    //natoms = (int)(volume_above_threshold / 15.0);
+
+    printf("Mass (kDa): %.2lf\n", mass/1000.0);
+    printf("Volume (A^3): %.2lf\n", volume);
+    printf("Using density threshold = %lf\n", threshold);
     
-    // Compute number of atoms based on average atomic masses.
-    //int natoms = (int)(mass / (1.0*0.499 + 12.0*0.314 + 14.0*0.087 + 16.0*0.098 + 32.0*0.002));
-    //fprintf(stderr, "Estimated number of atoms: %d\n", natoms);
-
-
-
 
     // --- Compute Volume and Atom Counts ---
     /* Given:
@@ -803,8 +782,6 @@ int main(int argc, char *argv[]) {
          S = 0.002
        We compute the effective average mass per atom:
     */
-    double avg_mass = 1.0*0.499 + 12.0*0.314 + 14.0*0.087 + 16.0*0.098 + 32.0*0.002;
-    int natoms = (int)(mass / avg_mass);
     int natoms_c = (int)(natoms * 0.314);
     int natoms_n = (int)(natoms * 0.087);
     int natoms_o = (int)(natoms * 0.098);
@@ -820,7 +797,8 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Memory allocation error for atom_type\n");
         exit(1);
     }
-    int i, j, pos = 0;
+    //int i, j, pos = 0;
+    int i, pos = 0;
     for (i = 0; i < natoms_c; i++) {
         atom_type[pos++] = 2;  // Carbon
     }
@@ -947,7 +925,7 @@ int main(int argc, char *argv[]) {
     beadMap.n = inmap.n;
     beadMap.data = (double *) calloc(beadMap.n, sizeof(double));
     if (!beadMap.data) { fprintf(stderr, "Memory allocation error\n"); exit(1); }
-    double sigma = inmap.apix_x / 2.0; // Set the Gaussian width.
+    //double sigma = inmap.apix_x / 2.0; // Set the Gaussian width.
     //renderBeadModel(&beadMap, natoms, xcoo, sigma);
 
 
