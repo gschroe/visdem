@@ -41,6 +41,9 @@ typedef struct {
     double *data;           // Density data (stored as doubles)
 } DensityMap;
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 /* Global constant for Peng kernel */
 double PengGFactor = 10.0;
