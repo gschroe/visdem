@@ -951,6 +951,9 @@ int main(int argc, char *argv[]) {
     // Match Density Histogram
     matchHistogram(&inmap, &beadMap);
 
+    // Match Structure Factor
+    matchStructureFactor(&inmap, &beadMap, 100);
+
     // Apply a smooth low-pass filter to the input map.
     smoothLowpassFilter_many(&inmap, resolution);
 
